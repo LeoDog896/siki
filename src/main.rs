@@ -1,51 +1,57 @@
 use std::collections::HashMap;
 
-use dialoguer::{theme::ColorfulTheme, Input, Select};
+use dialoguer::{theme::ColorfulTheme, Select};
 use minus::{page_all, Pager};
 use owo_colors::OwoColorize;
 use std::fmt::Write;
 
-use anyhow::Result;
 use serde::Deserialize;
 
-#[derive(Deserialize, Debug)]
+use clap::Parser;
+
+/// Grab info from wikipedia
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    /// The search query to give Wikipedia
+    query: String,
+}
+
+#[derive(Deserialize)]
 struct SearchItemResponse {
     title: String,
     snippet: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct QueryResponse {
     search: Vec<SearchItemResponse>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct SearchResponse {
     query: QueryResponse,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct SummaryPageResponse {
     extract: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct SummaryQueryResponse {
     pages: HashMap<String, SummaryPageResponse>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct SummaryResponse {
     query: SummaryQueryResponse,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    let args = Args::parse();
     let client = reqwest::Client::new();
-
-    let input: String = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Enter search term")
-        .interact_text()?;
 
     let body = client
         .get("https://simple.wikipedia.org/w/api.php")
@@ -53,12 +59,12 @@ async fn main() -> Result<()> {
             ("action", "query"),
             ("format", "json"),
             ("list", "search"),
-            ("srsearch", &input),
+            ("srsearch", &args.query),
         ])
         .send()
-        .await?
+        .await.expect("Could not send search query")
         .json::<SearchResponse>()
-        .await?;
+        .await.expect("Could not parse JSON to SearchResponse");
 
     let queries = body.query.search;
 
@@ -66,16 +72,24 @@ async fn main() -> Result<()> {
         .iter()
         .map(|query| {
             let dissolved = dissolve::strip_html_tags(&query.snippet).join("");
-            format!("{}\n{}\n", query.title.bold(), dissolved)
+            format!(
+                "{}\n{}\n",
+                if (&query.title).to_ascii_lowercase() == args.query.to_ascii_lowercase() {
+                    format!("{} (exact match!)", query.title.bold())
+                } else {
+                    query.title.bold().to_string()
+                },
+                dissolved
+            )
         })
         .collect();
 
     let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Pick your flavor")
+        .with_prompt("Pick your definition")
         .default(0)
         .items(&pretty_printed_queries[..])
         .max_length(2)
-        .interact()?;
+        .interact().expect("Could not make terminal interactive to pick search result");
 
     let chosen_query = &queries[selection];
 
@@ -91,17 +105,15 @@ async fn main() -> Result<()> {
             ("titles", &chosen_query.title),
         ])
         .send()
-        .await?
+        .await.expect("Could not send HTTP Request")
         .json::<SummaryResponse>()
-        .await?;
+        .await.expect("Could not deserialize JSON");
 
     let summary = &body.query.pages.values().next().unwrap().extract;
 
     let mut pager = Pager::new();
 
-    writeln!(pager, "{}", dissolve::strip_html_tags(summary).join(""))?;
+    writeln!(pager, "{}", dissolve::strip_html_tags(summary).join("")).expect("Could not write wikipedia page to pager.");
 
-    page_all(pager)?;
-
-    Ok(())
+    page_all(pager).expect("Could not create pager");
 }
