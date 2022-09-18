@@ -1,2 +1,2 @@
 # siki
-simple wikipedia explanations (rust)
+simple wikipedia (rust)

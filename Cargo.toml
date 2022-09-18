@@ -1,0 +1,16 @@
+[package]
+name = "siki"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1"
+dialoguer = "0.10.2"
+dissolve = "0.2.2"
+minus = { version = "5", features = ["static_output"] }
+owo-colors = "3.5.0"
+reqwest = { version = "0.11.11", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.21.1", features = ["full"] }
